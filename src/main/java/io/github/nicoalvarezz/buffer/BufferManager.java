@@ -1,0 +1,87 @@
+package io.github.nicoalvarezz.buffer;
+
+import io.github.nicoalvarezz.file.Block;
+import io.github.nicoalvarezz.file.FileManager;
+import io.github.nicoalvarezz.log.LogManager;
+
+public class BufferManager {
+    private final Buffer[] bufferPool;
+    private int numAvailable;
+    private static final long MAX_TIME = 1000; // 10 seconds
+
+    public BufferManager(FileManager fileManager, LogManager logManager, int numBuffers) {
+        bufferPool = new Buffer[numBuffers];
+        numAvailable = numBuffers;
+
+        for (int i = 0; i < numBuffers; i++) {
+            bufferPool[i] = new Buffer(fileManager, logManager);
+        }
+    }
+
+    public synchronized int available() {
+        return numAvailable;
+    }
+
+    public synchronized void flushAll(int txnum) {
+        for (Buffer buffer : bufferPool) {
+            if (buffer.modifyingTx() == txnum) {
+                buffer.flush();
+            }
+        }
+    }
+
+    public synchronized Buffer pin(Block block) {
+        try {
+            long timestamp = System.currentTimeMillis();
+            Buffer buffer = tryToPin(block);
+            while (buffer == null && !waitingTooLong(timestamp)) {
+                wait(MAX_TIME);
+                buffer = tryToPin(block);
+            }
+            if (buffer == null) {
+                throw new RuntimeException();
+            }
+            return buffer;
+        } catch (InterruptedException ex) {
+            throw new RuntimeException();
+        }
+    }
+
+    private Buffer tryToPin(Block block) {
+        Buffer buffer = findExistingBuffer(block);
+        if (buffer == null) {
+            buffer = choseUnpinnedBuffer();
+            if (buffer == null) {
+                return null;
+            }
+            buffer.assignToBlock(block);
+        }
+        if (!buffer.isPinned()) {
+            numAvailable--;
+        }
+        return buffer;
+    }
+
+    private Buffer findExistingBuffer(Block block) {
+        for (Buffer buffer : bufferPool) {
+            Block b = buffer.block();
+            if (b != null && b.equals(block)) {
+                return buffer;
+            }
+        }
+        return null;
+    }
+
+    private Buffer choseUnpinnedBuffer() {
+        for (Buffer buffer : bufferPool) {
+            if (!buffer.isPinned()) {
+                return buffer;
+            }
+        }
+        return null;
+    }
+
+    private boolean waitingTooLong(long startTime) {
+        return System.currentTimeMillis() - startTime > MAX_TIME;
+    }
+}
