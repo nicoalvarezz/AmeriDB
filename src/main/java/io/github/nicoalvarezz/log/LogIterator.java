@@ -12,10 +12,8 @@ class LogIterator implements Iterator<byte[]> {
     private final FileManager fileManager;
     private final BufferManager bufferManager;
     private Block block;
-    private Buffer buffer;
-    private Page page;
+    private Buffer buffer = null;
     private int currentPosition;
-    private int boundary;
 
     public LogIterator(FileManager fileManager, BufferManager bufferManager, Block block) {
         this.fileManager = fileManager;
@@ -39,7 +37,7 @@ class LogIterator implements Iterator<byte[]> {
             block = new Block(block.fileName(), block.number() - 1);
             moveToBlock(block);
         }
-        byte[] record = page.getBytes(currentPosition);
+        byte[] record = buffer.content().getBytes(currentPosition);
         currentPosition += Integer.BYTES + record.length;
 
         return record;
@@ -48,16 +46,13 @@ class LogIterator implements Iterator<byte[]> {
     private void moveToBlock(Block newBlock) {
         releaseBuffer();
         buffer = bufferManager.pin(newBlock);
-        page = buffer.content();
-        boundary = page.getInt(0);
-        currentPosition = boundary;
+        currentPosition = buffer.content().getInt(0);
     }
 
     private void releaseBuffer() {
         if (buffer != null) {
             bufferManager.unpin(buffer);
             buffer = null;
-            page = null;
         }
     }
 }
