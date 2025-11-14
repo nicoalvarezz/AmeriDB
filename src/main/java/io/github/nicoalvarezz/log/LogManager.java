@@ -1,5 +1,6 @@
 package io.github.nicoalvarezz.log;
 
+import io.github.nicoalvarezz.buffer.BufferManager;
 import io.github.nicoalvarezz.file.Block;
 import io.github.nicoalvarezz.file.FileManager;
 import io.github.nicoalvarezz.file.Page;
@@ -35,9 +36,9 @@ public class LogManager {
         }
     }
 
-    public Iterator<byte[]> iterator() {
+    public Iterator<byte[]> iterator(BufferManager bufferManager) {
         flush();
-        return new LogIterator(fileManager, currentBlock);
+        return new LogIterator(fileManager, bufferManager, currentBlock);
     }
 
     public synchronized int append(byte[] logRecord) {

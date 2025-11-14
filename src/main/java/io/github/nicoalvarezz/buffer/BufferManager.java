@@ -41,9 +41,18 @@ public class BufferManager {
             if (buffer == null) {
                 throw new RuntimeException();
             }
+            buffer.pin();
             return buffer;
         } catch (InterruptedException ex) {
             throw new RuntimeException();
+        }
+    }
+
+    public synchronized void unpin(Buffer buffer) {
+        buffer.unpin();
+        if (!buffer.isPinned()) {
+            numAvailable++;
+            notifyAll();
         }
     }
 
