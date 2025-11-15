@@ -41,7 +41,6 @@ public class BufferManager {
             if (buffer == null) {
                 throw new RuntimeException();
             }
-            buffer.pin();
             return buffer;
         } catch (InterruptedException ex) {
             throw new RuntimeException();
@@ -59,7 +58,7 @@ public class BufferManager {
     private Buffer tryToPin(Block block) {
         Buffer buffer = findExistingBuffer(block);
         if (buffer == null) {
-            buffer = choseUnpinnedBuffer();
+            buffer = fifo();
             if (buffer == null) {
                 return null;
             }
@@ -68,6 +67,7 @@ public class BufferManager {
         if (!buffer.isPinned()) {
             numAvailable--;
         }
+        buffer.pin();
         return buffer;
     }
 
@@ -88,6 +88,17 @@ public class BufferManager {
             }
         }
         return null;
+    }
+
+    private Buffer fifo() {
+        Buffer oldest = null;
+        for (Buffer buffer : bufferPool) {
+            if (!buffer.isPinned()) return buffer;
+            if (oldest == null || buffer.timestamp() < oldest.timestamp()) {
+                oldest = buffer;
+            }
+        }
+        return oldest;
     }
 
     private boolean waitingTooLong(long startTime) {

@@ -13,11 +13,13 @@ public class Buffer {
     private int pins = 0;
     private int txnum = -1;
     private int lsn = -1;
+    private long timestamp;
 
     public Buffer(FileManager fileManager, LogManager logManager) {
         this.fileManager = fileManager;
         this.logManager = logManager;
         contents = new Page(fileManager.blockSize());
+        this.timestamp = System.currentTimeMillis();
     }
 
     public Page content() {
@@ -41,11 +43,16 @@ public class Buffer {
         return txnum;
     }
 
+    public long timestamp() {
+        return timestamp;
+    }
+
     void assignToBlock(Block block) {
         flush();
         this.block = block;
         fileManager.read(block, contents);
         pins = 0;
+        timestamp = System.currentTimeMillis();
     }
 
     void flush() {
