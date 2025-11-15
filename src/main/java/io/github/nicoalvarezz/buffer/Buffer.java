@@ -14,6 +14,7 @@ public class Buffer {
     private int txnum = -1;
     private int lsn = -1;
     private long timestamp;
+    private long latestUsage = 0; // Brand-new frame when latestUsage is 0
 
     public Buffer(FileManager fileManager, LogManager logManager) {
         this.fileManager = fileManager;
@@ -47,12 +48,17 @@ public class Buffer {
         return timestamp;
     }
 
+    public long latestUsage() {
+        return latestUsage;
+    }
+
     void assignToBlock(Block block) {
         flush();
         this.block = block;
         fileManager.read(block, contents);
         pins = 0;
         timestamp = System.currentTimeMillis();
+        latestUsage = 0; // Brand-new frame
     }
 
     void flush() {
@@ -65,6 +71,7 @@ public class Buffer {
 
 
     void pin() {
+        latestUsage = System.currentTimeMillis();
         pins++;
     }
 

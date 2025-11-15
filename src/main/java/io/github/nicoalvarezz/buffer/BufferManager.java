@@ -101,6 +101,18 @@ public class BufferManager {
         return oldest;
     }
 
+    private Buffer lru() {
+        Buffer leastUsed = null;
+        for (Buffer buffer : bufferPool) {
+            if (buffer.isPinned()) continue;
+            if (buffer.latestUsage() == 0) return buffer; // brand-new frame
+            if (leastUsed == null || buffer.latestUsage() < leastUsed.latestUsage()) {
+                leastUsed = buffer;
+            }
+        }
+        return leastUsed;
+    }
+
     private boolean waitingTooLong(long startTime) {
         return System.currentTimeMillis() - startTime > MAX_TIME;
     }
