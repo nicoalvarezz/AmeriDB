@@ -1,21 +1,18 @@
 package io.github.nicoalvarezz.buffer;
 
-import io.github.nicoalvarezz.file.Block;
-import io.github.nicoalvarezz.file.FileManager;
-import io.github.nicoalvarezz.log.LogManager;
+import io.github.nicoalvarezz.wal.WriteAheadLog;
+import io.github.nicoalvarezz.storage.BlockId;
+import io.github.nicoalvarezz.storage.StorageEngine;
 
-public class BufferManager {
-    private final Buffer[] bufferPool;
+public class BufferPool {
+    private final Buffer[] buffers;
     private int numAvailable;
     private static final long MAX_TIME = 1000; // 10 seconds
 
-    public BufferManager(FileManager fileManager, LogManager logManager, int numBuffers) {
-        bufferPool = new Buffer[numBuffers];
+    public BufferPool(StorageEngine storageEngine, WriteAheadLog wal, int numBuffers) {
+        buffers = new Buffer[numBuffers];
         numAvailable = numBuffers;
-
-        for (int i = 0; i < numBuffers; i++) {
-            bufferPool[i] = new Buffer(fileManager, logManager);
-        }
+        for (int i = 0; i < numBuffers; i++) buffers[i] = new Buffer(storageEngine, wal);
     }
 
     public synchronized int available() {
@@ -23,20 +20,20 @@ public class BufferManager {
     }
 
     public synchronized void flushAll(int txnum) {
-        for (Buffer buffer : bufferPool) {
+        for (Buffer buffer : buffers) {
             if (buffer.modifyingTx() == txnum) {
                 buffer.flush();
             }
         }
     }
 
-    public synchronized Buffer pin(Block block) {
+    public synchronized Buffer pin(BlockId blockId) {
         try {
             long timestamp = System.currentTimeMillis();
-            Buffer buffer = tryToPin(block);
+            Buffer buffer = tryToPin(blockId);
             while (buffer == null && !waitingTooLong(timestamp)) {
                 wait(MAX_TIME);
-                buffer = tryToPin(block);
+                buffer = tryToPin(blockId);
             }
             if (buffer == null) {
                 throw new RuntimeException();
@@ -55,14 +52,14 @@ public class BufferManager {
         }
     }
 
-    private Buffer tryToPin(Block block) {
-        Buffer buffer = findExistingBuffer(block);
+    private Buffer tryToPin(BlockId blockId) {
+        Buffer buffer = findExistingBuffer(blockId);
         if (buffer == null) {
             buffer = fifo();
             if (buffer == null) {
                 return null;
             }
-            buffer.assignToBlock(block);
+            buffer.assignToBlock(blockId);
         }
         if (!buffer.isPinned()) {
             numAvailable--;
@@ -71,10 +68,10 @@ public class BufferManager {
         return buffer;
     }
 
-    private Buffer findExistingBuffer(Block block) {
-        for (Buffer buffer : bufferPool) {
-            Block b = buffer.block();
-            if (b != null && b.equals(block)) {
+    private Buffer findExistingBuffer(BlockId blockId) {
+        for (Buffer buffer : buffers) {
+            BlockId b = buffer.block();
+            if (b != null && b.equals(blockId)) {
                 return buffer;
             }
         }
@@ -82,7 +79,7 @@ public class BufferManager {
     }
 
     private Buffer choseUnpinnedBuffer() {
-        for (Buffer buffer : bufferPool) {
+        for (Buffer buffer : buffers) {
             if (!buffer.isPinned()) {
                 return buffer;
             }
@@ -92,7 +89,7 @@ public class BufferManager {
 
     private Buffer fifo() {
         Buffer oldest = null;
-        for (Buffer buffer : bufferPool) {
+        for (Buffer buffer : buffers) {
             if (!buffer.isPinned()) return buffer;
             if (oldest == null || buffer.timestamp() < oldest.timestamp()) {
                 oldest = buffer;
@@ -103,7 +100,7 @@ public class BufferManager {
 
     private Buffer lru() {
         Buffer leastUsed = null;
-        for (Buffer buffer : bufferPool) {
+        for (Buffer buffer : buffers) {
             if (buffer.isPinned()) continue;
             if (buffer.latestUsage() == 0) return buffer; // brand-new frame
             if (leastUsed == null || buffer.latestUsage() < leastUsed.latestUsage()) {

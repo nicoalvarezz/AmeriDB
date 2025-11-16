@@ -1,34 +1,35 @@
 package io.github.nicoalvarezz.buffer;
 
-import io.github.nicoalvarezz.file.Block;
-import io.github.nicoalvarezz.file.FileManager;
-import io.github.nicoalvarezz.file.Page;
-import io.github.nicoalvarezz.log.LogManager;
+import io.github.nicoalvarezz.wal.WriteAheadLog;
+import io.github.nicoalvarezz.storage.BlockId;
+import io.github.nicoalvarezz.storage.StorageEngine;
+
+import static io.github.nicoalvarezz.storage.StorageConfig.BLOCK_SIZE;
 
 public class Buffer {
-    private final FileManager fileManager;
-    private final LogManager logManager;
-    private final Page contents;
-    private Block block = null;
+    private final StorageEngine storageEngine;
+    private final WriteAheadLog wal;
+    private final Page page;
+    private BlockId blockId = null;
     private int pins = 0;
     private int txnum = -1;
     private int lsn = -1;
     private long timestamp;
     private long latestUsage = 0; // Brand-new frame when latestUsage is 0
 
-    public Buffer(FileManager fileManager, LogManager logManager) {
-        this.fileManager = fileManager;
-        this.logManager = logManager;
-        contents = new Page(fileManager.blockSize());
+    public Buffer(StorageEngine storageEngine, WriteAheadLog wal) {
+        this.storageEngine = storageEngine;
+        this.wal = wal;
+        page = new Page(BLOCK_SIZE);
         this.timestamp = System.currentTimeMillis();
     }
 
     public Page content() {
-        return contents;
+        return page;
     }
 
-    public Block block() {
-        return block;
+    public BlockId block() {
+        return blockId;
     }
 
     public void setModified(int txnum, int lsn) {
@@ -52,10 +53,10 @@ public class Buffer {
         return latestUsage;
     }
 
-    void assignToBlock(Block block) {
+    void assignToBlock(BlockId blockId) {
         flush();
-        this.block = block;
-        fileManager.read(block, contents);
+        this.blockId = blockId;
+        storageEngine.read(blockId, page.contents());
         pins = 0;
         timestamp = System.currentTimeMillis();
         latestUsage = 0; // Brand-new frame
@@ -63,8 +64,8 @@ public class Buffer {
 
     void flush() {
         if (txnum >= 0) {
-            logManager.flush(lsn);
-            fileManager.write(block, contents);
+            wal.flush(lsn);
+            storageEngine.write(blockId, page.contents());
             txnum = -1;
         }
     }

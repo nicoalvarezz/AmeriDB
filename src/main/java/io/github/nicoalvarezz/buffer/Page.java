@@ -1,4 +1,4 @@
-package io.github.nicoalvarezz.file;
+package io.github.nicoalvarezz.buffer;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
@@ -61,10 +61,7 @@ public class Page {
         return Integer.BYTES  + (strlen * (int) bytesPerChar);
     }
 
-    /**
-     * A package private method, needed by the file manager
-     */
-    ByteBuffer contents() {
+    public ByteBuffer contents() {
         byteBuffer.position(0);
         return byteBuffer;
     }
