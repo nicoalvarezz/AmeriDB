@@ -11,29 +11,28 @@ import static io.github.nicoalvarezz.storage.StorageConfig.BLOCK_SIZE;
 
 public class WriteAheadLog {
     private final StorageEngine storageEngine;
-    private final String logfile;
-    private final Page logpage;
+    private final String walFilename;
+    private final Page page;
     private BlockId currentBlockId;
-    private int latestLSN = 0;
-    private int lastSavedLSN = 0;
+    private Lsn nextLs = new Lsn(0);
+    private Lsn lastFlushed = new Lsn(0);
 
-    public WriteAheadLog(StorageEngine storageEngine, String logfile) {
+    public WriteAheadLog(StorageEngine storageEngine, String walFilename) {
         this.storageEngine = storageEngine;
-        this.logfile = logfile;
-        byte[] bytes = new byte[BLOCK_SIZE];
-        this.logpage = new Page(bytes);
-        int logSize = storageEngine.length(logfile);
+        this.walFilename = walFilename;
+        this.page = new Page(new byte[BLOCK_SIZE]);
 
-        if (logSize == 0) {
+        int numBlocks = storageEngine.length(walFilename);
+        if (numBlocks == 0) {
             currentBlockId = appendNewBlock();
         } else {
-            currentBlockId = new BlockId(logfile, logSize - 1);
-            storageEngine.read(currentBlockId, logpage.contents());
+            currentBlockId = new BlockId(walFilename, numBlocks - 1);
+            storageEngine.read(currentBlockId, page.contents());
         }
     }
 
-    public void flush(int lsn) {
-        if (lsn >= lastSavedLSN) {
+    public void flush(Lsn lsn) {
+        if (lsn.compareTo(lastFlushed) > 0) {
             flush();
         }
     }
@@ -43,32 +42,40 @@ public class WriteAheadLog {
         return new LogIterator(bufferPool, currentBlockId);
     }
 
-    public synchronized int append(byte[] logRecord) {
-        int boundary = logpage.getInt(0);
+    public synchronized Lsn append(byte[] logRecord) {
+        int boundary = page.getInt(0);
         int recordSize = logRecord.length;
         int bytesNeeded = recordSize + Integer.BYTES;
 
         if (boundary - bytesNeeded < Integer.BYTES) { // It doesn't fit, so move to next block
             flush();
             currentBlockId = appendNewBlock();
-            boundary = logpage.getInt(0);
+            boundary = page.getInt(0);
         }
+
         int recordPosition = boundary - bytesNeeded;
-        logpage.setInt(0, recordPosition); // the new boundary
-        latestLSN += 1;
-        return latestLSN;
+
+        Lsn assigned = nextLs;
+        nextLs = new Lsn(nextLs.value() + 1);
+        page.setInt(recordPosition, (int) assigned.value());
+
+        page.setBytes(recordPosition + Integer.BYTES, logRecord);
+        page.setInt(0, recordPosition); // the new boundary
+
+
+        return assigned;
     }
 
     private BlockId appendNewBlock() {
-        BlockId blockId = storageEngine.append(logfile);
-        logpage.setInt(0, BLOCK_SIZE);
-        storageEngine.write(blockId, logpage.contents());
-        latestLSN += 1;
+        BlockId blockId = storageEngine.append(walFilename);
+        page.setInt(0, BLOCK_SIZE);
+        storageEngine.write(blockId, page.contents());
         return blockId;
     }
 
     private void flush() {
-        storageEngine.write(currentBlockId, logpage.contents());
-        lastSavedLSN = latestLSN;
+        storageEngine.write(currentBlockId, page.contents());
+        lastFlushed = nextLs;
     }
 }
+

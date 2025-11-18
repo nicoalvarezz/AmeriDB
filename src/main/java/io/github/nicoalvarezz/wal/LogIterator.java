@@ -35,11 +35,13 @@ class LogIterator implements Iterator<LogRecord> {
             blockId = new BlockId(blockId.filename(), blockId.number() - 1);
             moveToBlock(blockId);
         }
+        long lsnValue = buffer.content().getInt(currentPosition);
+        currentPosition += Integer.BYTES;
+
         byte[] record = buffer.content().getBytes(currentPosition);
         currentPosition += Integer.BYTES + record.length;
 
-        // TODO(nico): Fix lsn handlign
-        return new SimpleLogRecord(new Lsn(0), record);
+        return new SimpleLogRecord(new Lsn(lsnValue), record);
     }
 
     private void moveToBlock(BlockId newBlock) {
