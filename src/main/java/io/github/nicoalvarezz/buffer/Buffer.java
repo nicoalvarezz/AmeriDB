@@ -1,5 +1,6 @@
 package io.github.nicoalvarezz.buffer;
 
+import io.github.nicoalvarezz.wal.Lsn;
 import io.github.nicoalvarezz.wal.WriteAheadLog;
 import io.github.nicoalvarezz.storage.BlockId;
 import io.github.nicoalvarezz.storage.StorageEngine;
@@ -13,7 +14,7 @@ public class Buffer {
     private BlockId blockId = null;
     private int pins = 0;
     private int txnum = -1;
-    private int lsn = -1;
+    private Lsn lsn = null;
     private long timestamp;
     private long latestUsage = 0; // Brand-new frame when latestUsage is 0
 
@@ -34,7 +35,9 @@ public class Buffer {
 
     public void setModified(int txnum, int lsn) {
         this.txnum = txnum;
-        if (lsn >= 0) { this.lsn = lsn; }
+        if (lsn >= 0) {
+            this.lsn = new Lsn(lsn);
+        }
     }
 
     public boolean isPinned() {
@@ -64,7 +67,9 @@ public class Buffer {
 
     void flush() {
         if (txnum >= 0) {
-            wal.flush(lsn);
+            if (lsn != null) {
+                wal.flush(lsn);
+            }
             storageEngine.write(blockId, page.contents());
             txnum = -1;
         }

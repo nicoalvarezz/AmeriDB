@@ -10,7 +10,6 @@ public class Page {
 
     /**
      * A constructor fo creating data buffers
-     * @param blockSize
      */
     public Page(int blockSize) {
       byteBuffer = ByteBuffer.allocateDirect(blockSize);
@@ -18,7 +17,6 @@ public class Page {
 
     /**
      * A constructor for creating log pages
-     * @param bytes
      */
     public Page(byte[] bytes) {
         byteBuffer = ByteBuffer.wrap(bytes);
@@ -30,6 +28,14 @@ public class Page {
 
     public void setInt(int offset, int n) {
         byteBuffer.putInt(offset, n);
+    }
+
+    public long getLong(int offset) {
+        return byteBuffer.getLong(offset);
+    }
+
+    public void setLong(int offset, long n) {
+        byteBuffer.putLong(offset, n);
     }
 
     public byte[] getBytes(int offset) {

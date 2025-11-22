@@ -45,9 +45,10 @@ public class WriteAheadLog {
     public synchronized Lsn append(byte[] logRecord) {
         int boundary = page.getInt(0);
         int recordSize = logRecord.length;
-        int bytesNeeded = recordSize + Integer.BYTES;
+        // Total bytes needed: LSN (long) + payload (int length prefix + actual bytes)
+        int bytesNeeded = Long.BYTES + Integer.BYTES + recordSize;
 
-        if (boundary - bytesNeeded < Integer.BYTES) { // It doesn't fit, so move to next block
+        if (boundary - bytesNeeded < Integer.BYTES) { // If it doesn't fit, so move to next block
             flush();
             currentBlockId = appendNewBlock();
             boundary = page.getInt(0);
@@ -57,9 +58,10 @@ public class WriteAheadLog {
 
         Lsn assigned = nextLs;
         nextLs = new Lsn(nextLs.value() + 1);
-        page.setInt(recordPosition, (int) assigned.value());
 
-        page.setBytes(recordPosition + Integer.BYTES, logRecord);
+        // Write LSN, then payload
+        page.setLong(recordPosition, assigned.value());
+        page.setBytes(recordPosition + Long.BYTES, logRecord);
         page.setInt(0, recordPosition); // the new boundary
 
 
@@ -78,4 +80,3 @@ public class WriteAheadLog {
         lastFlushed = nextLs;
     }
 }
-

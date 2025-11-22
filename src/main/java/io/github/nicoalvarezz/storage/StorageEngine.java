@@ -15,16 +15,21 @@ public class StorageEngine {
 
     public StorageEngine(String dbName) {
         String homeDir = System.getProperty("user.home");
-        storageDir = new File(homeDir, dbName);
+        File requested = new File(dbName);
+        storageDir = requested.isAbsolute() ? requested : new File(homeDir, dbName);
         boolean isNew = !storageDir.exists();
-
-        if (!isNew && !storageDir.mkdirs()) {
+        if (isNew && !storageDir.mkdirs()) {
             throw new RuntimeException("Database cannot be created.");
         }
 
         // remove any leftover temporary tables
-        for (String filename : storageDir.list()) {
-            if (filename.startsWith("temp")) new File(storageDir, filename).delete();
+        String[] existing = storageDir.list();
+        if (existing != null) {
+            for (String filename : existing) {
+                if (filename.startsWith("temp")) {
+                    new File(storageDir, filename).delete();
+                }
+            }
         }
     }
 
@@ -42,7 +47,7 @@ public class StorageEngine {
             file.seek((long) blockId.number() * BLOCK_SIZE);
             file.getChannel().write(bufferBuffer);
         } catch (IOException ex) {
-            throw new RuntimeException("Cannot write block");
+            throw new RuntimeException("Cannot write block", ex);
         }
     }
 
@@ -54,7 +59,7 @@ public class StorageEngine {
            file.seek((long) blockId.number() * BLOCK_SIZE);
            file.write(bytes);
         } catch (IOException ex) {
-            throw new RuntimeException("Cannot access");
+            throw new RuntimeException("Cannot access", ex);
         }
         return blockId;
     }
@@ -63,7 +68,7 @@ public class StorageEngine {
         try(RandomAccessFile file = file(filename)) {
             return (int) ((file.length() / BLOCK_SIZE));
         } catch (IOException ex) {
-            throw new RuntimeException("Cannot access");
+            throw new RuntimeException("Cannot access", ex);
         }
     }
 

@@ -6,8 +6,6 @@ import io.github.nicoalvarezz.storage.BlockId;
 
 import java.util.Iterator;
 
-import static io.github.nicoalvarezz.storage.StorageConfig.BLOCK_SIZE;
-
 class LogIterator implements Iterator<LogRecord> {
     private final BufferPool bufferPool;
     private BlockId blockId;
@@ -22,7 +20,9 @@ class LogIterator implements Iterator<LogRecord> {
 
     @Override
     public boolean hasNext() {
-        boolean hasNext = currentPosition < BLOCK_SIZE || blockId.number() > 0;
+        // hasNext is true if there is at least a record (LSN + payload length) in the current block
+        // OR there are previous blocks to read.
+        boolean hasNext = currentPosition >= (Long.BYTES + Integer.BYTES) || blockId.number() > 0;
         if (!hasNext) {
             releaseBuffer();
         }
@@ -31,15 +31,29 @@ class LogIterator implements Iterator<LogRecord> {
 
     @Override
     public LogRecord next() {
-        if (currentPosition == BLOCK_SIZE) {
+        // Check if we need to move to the previous block
+        // The current position needs to be able to fit at least LSN (long) + payload_length (int)
+        if (currentPosition < (Long.BYTES + Integer.BYTES) && blockId.number() > 0) {
             blockId = new BlockId(blockId.filename(), blockId.number() - 1);
             moveToBlock(blockId);
+        } else if (currentPosition < (Long.BYTES + Integer.BYTES) && blockId.number() == 0) {
+            // No more records in the current block and no previous blocks
+            throw new java.util.NoSuchElementException();
         }
-        long lsnValue = buffer.content().getInt(currentPosition);
-        currentPosition += Integer.BYTES;
 
-        byte[] record = buffer.content().getBytes(currentPosition);
-        currentPosition += Integer.BYTES + record.length;
+        // currentPosition points to the start of the record to be read.
+        int payloadLength = buffer.content().getInt(currentPosition + Long.BYTES);
+        
+        // Total size of the record: LSN (long) + payload_length (int) + payload (bytes)
+        int totalRecordSize = Long.BYTES + Integer.BYTES + payloadLength;
+        
+        // Adjust currentPosition to point to the start of the *previous* record for the next iteration
+        currentPosition -= totalRecordSize;
+
+        // Read the LSN and payload from the *current record's start position*
+        // The start of the current record is `currentPosition + totalRecordSize`
+        long lsnValue = buffer.content().getLong(currentPosition + totalRecordSize);
+        byte[] record = buffer.content().getBytes(currentPosition + totalRecordSize + Long.BYTES);
 
         return new SimpleLogRecord(new Lsn(lsnValue), record);
     }
