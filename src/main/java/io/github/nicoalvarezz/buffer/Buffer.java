@@ -15,6 +15,7 @@ public class Buffer {
     private int pins = 0;
     private int txnum = -1;
     private Lsn lsn = null;
+    private Boolean referenceBit = false;
 
     public Buffer(StorageEngine storageEngine, WriteAheadLog wal) {
         this.storageEngine = storageEngine;
@@ -45,14 +46,14 @@ public class Buffer {
         return txnum;
     }
 
-    void assignToBlock(BlockId blockId) {
+    public void assignToBlock(BlockId blockId) {
         flush();
         this.blockId = blockId;
         storageEngine.read(blockId, page.contents());
         pins = 0;
     }
 
-    void flush() {
+    public void flush() {
         if (txnum >= 0) {
             if (lsn != null) {
                 wal.flush(lsn);
@@ -62,11 +63,20 @@ public class Buffer {
         }
     }
 
-    void pin() {
+    public void pin() {
         pins++;
+        referenceBit = true;
     }
 
-    void unpin() {
+    public void unpin() {
         pins--;
+    }
+
+    public void setReferenceBit(boolean ref) {
+        this.referenceBit = ref;
+    }
+
+    public boolean isReferenced() {
+        return referenceBit;
     }
 }

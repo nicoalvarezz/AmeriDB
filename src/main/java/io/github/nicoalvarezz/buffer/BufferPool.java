@@ -4,13 +4,18 @@ import io.github.nicoalvarezz.wal.WriteAheadLog;
 import io.github.nicoalvarezz.storage.BlockId;
 import io.github.nicoalvarezz.storage.StorageEngine;
 
+import java.util.concurrent.ConcurrentHashMap;
+
 public class BufferPool {
     private final Buffer[] buffers;
+    private final ConcurrentHashMap<BlockId, Buffer> bufferTable;
     private int numAvailable;
     private static final long MAX_TIME = 1000; // 10 seconds
+    private int clockHand = 0;
 
     public BufferPool(StorageEngine storageEngine, WriteAheadLog wal, int numBuffers) {
         buffers = new Buffer[numBuffers];
+        bufferTable = new ConcurrentHashMap<>();
         numAvailable = numBuffers;
         for (int i = 0; i < numBuffers; i++) buffers[i] = new Buffer(storageEngine, wal);
     }
@@ -60,6 +65,7 @@ public class BufferPool {
                 return null;
             }
             buffer.assignToBlock(blockId);
+            bufferTable.put(blockId, buffer);
         }
         if (!buffer.isPinned()) {
             numAvailable--;
@@ -69,22 +75,24 @@ public class BufferPool {
     }
 
     private Buffer findExistingBuffer(BlockId blockId) {
-        for (Buffer buffer : buffers) {
-            BlockId b = buffer.block();
-            if (b != null && b.equals(blockId)) {
-                return buffer;
-            }
-        }
-        return null;
+       return bufferTable.getOrDefault(blockId, null);
     }
 
     private Buffer choseUnpinnedBuffer() {
-        for (Buffer buffer : buffers) {
-            if (!buffer.isPinned()) {
+        if (numAvailable == 0) return null;
+
+        while (true) {
+            Buffer buffer = buffers[clockHand];
+
+            clockHand = (clockHand + 1) + 1;
+            if (buffer.isPinned()) continue;
+
+            if (buffer.isReferenced()) {
+                buffer.setReferenceBit(false); // second chance
+            } else {
                 return buffer;
             }
         }
-        return null;
     }
 
     private boolean waitingTooLong(long startTime) {
