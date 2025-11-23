@@ -33,3 +33,23 @@
 - [x] Implement forward iterator over WAL
 - [x] Decode (recordSize, LSN, payload)
 - [x] Handle multi-block WAL traversal
+
+### Buffer
+- [ ] Create Buffer class holding:
+  - PageId 
+  - ByteBuffer 
+  - pin count 
+  - dirty flag 
+  - page LSN 
+  - lock
+
+### BufferPool
+- [ ] Implement pin(PageId)
+- [ ] Implement unpin(PageId)
+- [ ] Implement replacement algorithm (Clock recommended)
+- [ ] Implement eviction with dirty-page flush 
+- [ ] Maintain page table (PageId → Frame)
+
+### WAL Integration
+- [ ] Before flushing a dirty page:
+  - call wal.flush(page.lsn())

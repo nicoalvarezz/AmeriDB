@@ -55,7 +55,7 @@ public class BufferPool {
     private Buffer tryToPin(BlockId blockId) {
         Buffer buffer = findExistingBuffer(blockId);
         if (buffer == null) {
-            buffer = fifo();
+            buffer = choseUnpinnedBuffer();
             if (buffer == null) {
                 return null;
             }
@@ -85,29 +85,6 @@ public class BufferPool {
             }
         }
         return null;
-    }
-
-    private Buffer fifo() {
-        Buffer oldest = null;
-        for (Buffer buffer : buffers) {
-            if (!buffer.isPinned()) return buffer;
-            if (oldest == null || buffer.timestamp() < oldest.timestamp()) {
-                oldest = buffer;
-            }
-        }
-        return oldest;
-    }
-
-    private Buffer lru() {
-        Buffer leastUsed = null;
-        for (Buffer buffer : buffers) {
-            if (buffer.isPinned()) continue;
-            if (buffer.latestUsage() == 0) return buffer; // brand-new frame
-            if (leastUsed == null || buffer.latestUsage() < leastUsed.latestUsage()) {
-                leastUsed = buffer;
-            }
-        }
-        return leastUsed;
     }
 
     private boolean waitingTooLong(long startTime) {

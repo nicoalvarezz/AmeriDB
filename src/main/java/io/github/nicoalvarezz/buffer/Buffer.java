@@ -15,14 +15,11 @@ public class Buffer {
     private int pins = 0;
     private int txnum = -1;
     private Lsn lsn = null;
-    private long timestamp;
-    private long latestUsage = 0; // Brand-new frame when latestUsage is 0
 
     public Buffer(StorageEngine storageEngine, WriteAheadLog wal) {
         this.storageEngine = storageEngine;
         this.wal = wal;
         page = new Page(BLOCK_SIZE);
-        this.timestamp = System.currentTimeMillis();
     }
 
     public Page content() {
@@ -48,21 +45,11 @@ public class Buffer {
         return txnum;
     }
 
-    public long timestamp() {
-        return timestamp;
-    }
-
-    public long latestUsage() {
-        return latestUsage;
-    }
-
     void assignToBlock(BlockId blockId) {
         flush();
         this.blockId = blockId;
         storageEngine.read(blockId, page.contents());
         pins = 0;
-        timestamp = System.currentTimeMillis();
-        latestUsage = 0; // Brand-new frame
     }
 
     void flush() {
@@ -75,9 +62,7 @@ public class Buffer {
         }
     }
 
-
     void pin() {
-        latestUsage = System.currentTimeMillis();
         pins++;
     }
 

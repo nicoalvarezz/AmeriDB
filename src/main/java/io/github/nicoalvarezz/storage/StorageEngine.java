@@ -34,16 +34,18 @@ public class StorageEngine {
     }
 
     public synchronized void read(BlockId blockId, ByteBuffer byteBuffer) {
-       try(RandomAccessFile file = file(blockId.filename())) {
-          file.seek((long) blockId.number() * BLOCK_SIZE);
-          file.getChannel().read(byteBuffer);
+       try {
+           RandomAccessFile file = file(blockId.filename());
+           file.seek((long) blockId.number() * BLOCK_SIZE);
+           file.getChannel().read(byteBuffer);
        } catch (IOException ex) {
            throw new RuntimeException("Cannot read block");
        }
     }
 
     public synchronized void write(BlockId blockId, ByteBuffer bufferBuffer) {
-        try(RandomAccessFile file = file(blockId.filename())) {
+        try {
+            RandomAccessFile file = file(blockId.filename());
             file.seek((long) blockId.number() * BLOCK_SIZE);
             file.getChannel().write(bufferBuffer);
         } catch (IOException ex) {
@@ -55,9 +57,10 @@ public class StorageEngine {
         // TODO(nico): We are accessing the file twice here; 1. length of file, 2. file to append new block
         BlockId blockId = new BlockId(filename, length(filename));
         byte[] bytes = new byte[BLOCK_SIZE];
-        try(RandomAccessFile file = file(filename)) {
-           file.seek((long) blockId.number() * BLOCK_SIZE);
-           file.write(bytes);
+        try {
+            RandomAccessFile file = file(filename);
+            file.seek((long) blockId.number() * BLOCK_SIZE);
+            file.write(bytes);
         } catch (IOException ex) {
             throw new RuntimeException("Cannot access", ex);
         }
@@ -65,7 +68,8 @@ public class StorageEngine {
     }
 
     public int length(String filename) {
-        try(RandomAccessFile file = file(filename)) {
+        try {
+            RandomAccessFile file = file(filename);
             return (int) ((file.length() / BLOCK_SIZE));
         } catch (IOException ex) {
             throw new RuntimeException("Cannot access", ex);
