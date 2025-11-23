@@ -20,7 +20,7 @@ public class WriteAheadLog {
     public WriteAheadLog(StorageEngine storageEngine, String walFilename) {
         this.storageEngine = storageEngine;
         this.walFilename = walFilename;
-        this.page = new Page(new byte[BLOCK_SIZE]);
+        this.page = new Page(BLOCK_SIZE);
 
         int numBlocks = storageEngine.length(walFilename);
         if (numBlocks == 0) {
