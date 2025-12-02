@@ -161,8 +161,9 @@ public class DiskManager {
                     channel = FileChannel.open(fileHandle.toPath(), StandardOpenOption.CREATE, StandardOpenOption.READ,
                             StandardOpenOption.WRITE);
                     fileChannelCache.put(fileName, channel);
-                    nextPageIdMap.put(fileName, new AtomicInteger(0)); // Initialise the nextPageId counter for the new
-                                                                       // file
+
+                    // Initialise the nextPageId counter for the new file
+                    nextPageIdMap.put(fileName, new AtomicInteger(0));
                 }
             } finally {
                 fileMutex.unlock();
