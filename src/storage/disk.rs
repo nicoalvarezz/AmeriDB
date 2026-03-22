@@ -81,11 +81,8 @@ pub struct StorageManager {
 }
 
 impl StorageManager {
-    pub fn open(
-       data_file_path: impl AsRef<Path>,
-       page_size: usize,
-    ) -> io::Result<Self> {
-         if page_size == 0 {
+    pub fn open(data_file_path: impl AsRef<Path>, page_size: usize) -> io::Result<Self> {
+        if page_size == 0 {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "page size must be greater than 0",
@@ -103,6 +100,7 @@ impl StorageManager {
             .read(true)
             .write(true)
             .create(true)
+            .truncate(false)
             .open(&path)?;
 
         let file_len = file.metadata()?.len();
@@ -146,7 +144,7 @@ impl StorageManager {
 
         Ok(Self {
             file,
-            path, 
+            path,
             page_size,
             next_page_id,
         })
@@ -209,7 +207,7 @@ impl StorageManager {
     }
 
     fn persist_header(&mut self) -> io::Result<()> {
-        let header = PageHeader::new(self.page_size as u32, self.next_page_id.0 as u64);
+        let header = PageHeader::new(self.page_size as u32, self.next_page_id.0);
         self.file.write_all_at(&header.to_bytes(), 0)?;
         Ok(())
     }
@@ -240,7 +238,7 @@ mod tests {
         let path = temp_dir.path().join("test.db");
 
         let manager = StorageManager::open(&path, PAGE_SIZE)?;
-        
+
         let mut buf = [0u8; PageHeader::SIZE];
         manager.file.read_exact_at(&mut buf, 0)?;
 
@@ -272,7 +270,7 @@ mod tests {
 
     #[test]
     fn storage_manager_allocates_incremental_next_page_id() -> io::Result<()> {
-        let temp_dir= tempdir()?;
+        let temp_dir = tempdir()?;
         let path = temp_dir.path().join("test.db");
 
         let mut manager = StorageManager::open(path, PAGE_SIZE)?;
@@ -281,7 +279,7 @@ mod tests {
         for _ in 0..5 {
             manager.allocate_page()?;
         }
-        
+
         assert_eq!(manager.next_page_id.0, 5);
 
         Ok(())
@@ -329,22 +327,22 @@ mod tests {
 
         Ok(())
     }
-    
+
     #[test]
     fn storage_manager_write_beyond_allocated_fails() -> io::Result<()> {
         let temp_dir = tempdir()?;
         let path = temp_dir.path().join("test.db");
 
         let mut manager = StorageManager::open(path, PAGE_SIZE)?;
-        let page = Page::new(PageId(1), PAGE_SIZE); 
+        let page = Page::new(PageId(1), PAGE_SIZE);
 
         let err = manager
             .write_page(&page)
             .expect_err("writing beyond allocated page range should fail");
         assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
         assert_eq!(err.to_string(), "cannot write to an unallocated page id");
-        
-        Ok(())   
+
+        Ok(())
     }
 
     #[test]
@@ -352,18 +350,18 @@ mod tests {
         let temp_dir = tempdir()?;
         let path = temp_dir.path().join("test.db");
 
-        let err = StorageManager::open(path, 0)
-            .expect_err("opening file with 0 page size should fail");
+        let err =
+            StorageManager::open(path, 0).expect_err("opening file with 0 page size should fail");
         assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
-    
+
         Ok(())
     }
 
     #[test]
     fn storage_manager_open_fails_on_ivalid_magic() -> io::Result<()> {
         let temp_dir = tempdir()?;
-        let path = temp_dir.path().join("test.db"); 
-        
+        let path = temp_dir.path().join("test.db");
+
         let mut buf = [0u8; PageHeader::SIZE];
         buf[0..4].copy_from_slice(&[0u8; 4]);
         std::fs::File::create(&path)?;
@@ -378,7 +376,7 @@ mod tests {
             .expect_err("opening file with invalid magic should fail");
         assert_eq!(err.kind(), io::ErrorKind::InvalidData);
         assert_eq!(err.to_string(), "Invalid datbaase header magic");
-        
+
         Ok(())
     }
 
@@ -410,7 +408,7 @@ mod tests {
     fn storage_manager_sync_all_updates_file_metadata() -> io::Result<()> {
         let temp_dir = tempdir()?;
         let path = temp_dir.path().join("test.db");
-        
+
         // Fres open - file is small
         let mut manager = StorageManager::open(&path, PAGE_SIZE)?;
         let initial_len = manager.file.metadata()?.len();
@@ -424,12 +422,12 @@ mod tests {
 
         // Check BEFORE sync all
         let len_before_sync = manager.file.metadata()?.len();
-        
+
         assert!(len_before_sync > initial_len);
 
         // Force metadate + data durable
         manager.sync_all()?;
-        
+
         // Check AFTER sync all - size MUST be updated now
         let len_after_sync = manager.file.metadata()?.len();
         let expected_len = PageHeader::SIZE as u64 + (page_id.0 + 1) * PAGE_SIZE as u64;
