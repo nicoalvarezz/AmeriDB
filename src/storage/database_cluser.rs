@@ -223,7 +223,6 @@ mod tests {
         Ok(())
     }
 
-    /// Close database removes it from open cache
     #[test]
     fn cluster_close_database_removes_from_cache() -> io::Result<()> {
         let temp_dir = tempdir()?;
@@ -242,7 +241,6 @@ mod tests {
         Ok(())
     }
 
-    /// Re-opening after close re-creates fresh manager
     #[test]
     fn cluster_reopen_after_close_gives_new_instance() -> io::Result<()> {
         let temp_dir = tempdir()?;
@@ -281,6 +279,123 @@ mod tests {
         assert!(open_ids.contains(&id_1));
         assert!(open_ids.contains(&id_3));
         assert!(!open_ids.contains(&id_2));
+
+        Ok(())
+    }
+
+    #[test]
+    fn cluster_round_trip_via_open_database() -> io::Result<()> {
+        let temp_dir = tempdir()?;
+        let cluster = DatabaseCluster::new(temp_dir.path(), PAGE_SIZE)?;
+        let db_id = DatabaseId(777);
+
+        let db = cluster.open_database(db_id)?;
+        let mut manager = db.lock().unwrap();
+
+        let page_id = manager.allocate_page()?;
+        let mut page = Page::new(page_id, manager.page_size()?);
+        let content = b"round-trip";
+        page.data[..content.len()].copy_from_slice(content);
+        manager.write_page(&page)?;
+        manager.sync_data()?;
+
+        let read_back = manager.read_page(page_id)?;
+        assert_eq!(&read_back.data[..content.len()], content);
+
+        Ok(())
+    }
+
+    #[test]
+    fn cluster_multiple_databases_concurrent_operations_isolated() -> io::Result<()> {
+        let temp_dir = tempdir()?;
+        let cluster = DatabaseCluster::new(temp_dir.path(), PAGE_SIZE)?;
+
+        let db_a = cluster.open_database(DatabaseId(1))?;
+        let db_b = cluster.open_database(DatabaseId(2))?;
+        let db_c = cluster.open_database(DatabaseId(3))?;
+
+        let mut mgr_a = db_a.lock().unwrap();
+        let mut mgr_b = db_b.lock().unwrap();
+        let mut mgr_c = db_c.lock().unwrap();
+
+        simple_write(&mut mgr_a, "alpha")?;
+        simple_write(&mut mgr_b, "bravo")?;
+        simple_write(&mut mgr_c, "charlie")?;
+
+        let page_a = mgr_a.read_page(PageId(0))?;
+        let page_b = mgr_b.read_page(PageId(0))?;
+        let page_c = mgr_c.read_page(PageId(0))?;
+
+        assert_eq!(&page_a.data[..5], b"alpha");
+        assert_eq!(&page_b.data[..5], b"bravo");
+        assert_eq!(&page_c.data[..7], b"charlie");
+
+        Ok(())
+    }
+
+    #[test]
+    fn cluster_persistence_across_reopen_for_multiple_dbs() -> io::Result<()> {
+        let temp_dir = tempdir()?;
+        let id_a = DatabaseId(10);
+        let id_b = DatabaseId(20);
+
+        // First cluster lifetime: write to two databases
+        {
+            let cluster = DatabaseCluster::new(temp_dir.path(), PAGE_SIZE)?;
+
+            let db_a = cluster.open_database(id_a)?;
+            let db_b = cluster.open_database(id_b)?;
+
+            {
+                let mut mgr_a = db_a.lock().unwrap();
+                simple_write(&mut mgr_a, "persist-a")?;
+            }
+            {
+                let mut mgr_b = db_b.lock().unwrap();
+                simple_write(&mut mgr_b, "persist-b")?;
+            }
+        }
+
+        // Re-open cluster and verify both persisted
+        let cluster_reopened = DatabaseCluster::new(temp_dir.path(), PAGE_SIZE)?;
+        let db_a_reopened = cluster_reopened.open_database(id_a)?;
+        let db_b_reopened = cluster_reopened.open_database(id_b)?;
+
+        let mut mgr_a_reopened = db_a_reopened.lock().unwrap();
+        let mut mgr_b_reopened = db_b_reopened.lock().unwrap();
+
+        let page_a = mgr_a_reopened.read_page(PageId(0))?;
+        let page_b = mgr_b_reopened.read_page(PageId(0))?;
+
+        assert_eq!(&page_a.data[..9], b"persist-a");
+        assert_eq!(&page_b.data[..9], b"persist-b");
+
+        Ok(())
+    }
+
+    /// Attempt to open non-existent oid still creates it (create-if-missing)
+    #[test]
+    fn cluster_open_nonexistent_oid_creates_new_database() -> io::Result<()> {
+        let temp_dir = tempdir()?;
+        let cluster = DatabaseCluster::new(temp_dir.path(), PAGE_SIZE)?;
+        let db_id = DatabaseId(999_999);
+
+        let db_dir = cluster.cluster_dir().join("base").join(db_id.0.to_string());
+        assert!(!db_dir.exists(), "database directory should not exist before open");
+
+        let db = cluster.open_database(db_id)?;
+        assert!(db_dir.exists(), "database directory should be created on open");
+        assert!(
+            db_dir.join("database.data").exists(),
+            "database file should be created on open"
+        );
+
+        let mut manager = db.lock().unwrap();
+        assert_eq!(
+            manager.allocate_page()?,
+            PageId(0),
+            "newly created database should allocate first page at PageId(0)"
+        );
 
         Ok(())
     }
