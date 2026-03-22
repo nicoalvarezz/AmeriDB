@@ -7,18 +7,24 @@ use std::{
 
 use crate::storage::disk::StorageManager;
 
+/// Identifies a speicifc database file within the cluster.
+/// Equivalent to an OID in PostgreSQL - every databse gets a unique numeric instance
+/// The cluster uses this to route requests to correct StorageManager instance.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct DatabaseId(pub u64);
+pub struct DatabaseId(pub u64); 
 
 pub struct DatabaseCluster {
-    /// Root directroy of the cluster
+    /// Root directory of the cluster (e.g. `./data`).
+    /// All database subdirectories live under `{cluster_dir}/base/{database_id}/`.
     cluster_dir: PathBuf,
 
-    /// Default page size for the new database (can be overridden per-db later)
+    /// Default page size applied when opening a new database file.
+    /// Can be overridden per-database in the future to support different block sizes.
     default_page_size: usize,
 
-    /// Open storage managers, keyed by database OID
-    /// Wrapped in Arc<Mutex<<>> so we can share & mutate across threads laters
+    /// Cache of open StorageManagers, keyed by DatabaseId.
+    /// Wrapped in Arc<Mutex<>> so the same manager instance can be shared and mutated
+    /// safely across threads. Opening the same DatabaseId twice returns the cached Arc.
     databases: Mutex<HashMap<DatabaseId, Arc<Mutex<StorageManager>>>>,
 }
 
